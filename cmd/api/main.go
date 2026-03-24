@@ -1,4 +1,3 @@
-package api
 package main
 
 import (

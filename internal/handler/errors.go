@@ -37,8 +37,18 @@ func respondWithError(w http.ResponseWriter, code int, errCode, message string, 
 func handleDomainError(w http.ResponseWriter, err error) {
 	var insuffFunds *domain.InsufficientFundsError
 	switch {
+	case errors.Is(err, domain.ErrUnauthorized):
+		respondWithError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized", nil)
+	case errors.Is(err, domain.ErrInvalidCredentials):
+		respondWithError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid email or password", nil)
+	case errors.Is(err, domain.ErrDuplicateUser):
+		respondWithError(w, http.StatusConflict, "DUPLICATE_USER", "user already exists", nil)
+	case errors.Is(err, domain.ErrUserNotFound):
+		respondWithError(w, http.StatusNotFound, "USER_NOT_FOUND", "user not found", nil)
 	case errors.Is(err, domain.ErrAccountNotFound):
 		respondWithError(w, http.StatusNotFound, "ACCOUNT_NOT_FOUND", "account not found", nil)
+	case errors.Is(err, domain.ErrTransactionNotFound):
+		respondWithError(w, http.StatusNotFound, "TRANSACTION_NOT_FOUND", "transaction not found", nil)
 	case errors.Is(err, domain.ErrAccountFrozen):
 		respondWithError(w, http.StatusForbidden, "ACCOUNT_FROZEN", "account is frozen", nil)
 	case errors.Is(err, domain.ErrInsufficientFunds):

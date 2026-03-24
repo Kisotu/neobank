@@ -10,18 +10,24 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/username/banking-app/internal/auth"
 	"github.com/username/banking-app/internal/config"
 	appdb "github.com/username/banking-app/internal/db"
 	"github.com/username/banking-app/internal/handler"
+	"github.com/username/banking-app/internal/repository"
 	"github.com/username/banking-app/internal/service"
 )
 
 type Container struct {
-	Config       *config.Config
-	Logger       *slog.Logger
-	DBPool       *pgxpool.Pool
-	HTTPHandler  http.Handler
-	TransferSvc  service.TransferService
+	Config      *config.Config
+	Logger      *slog.Logger
+	DBPool      *pgxpool.Pool
+	HTTPHandler http.Handler
+	JWTManager  *auth.JWTManager
+	UserSvc     service.UserService
+	AccountSvc  service.AccountService
+	TransferSvc service.TransferService
+	TxSvc       service.TransactionService
 }
 
 func Build(ctx context.Context) (*Container, error) {
@@ -37,16 +43,33 @@ func Build(ctx context.Context) (*Container, error) {
 		return nil, fmt.Errorf("init db pool: %w", err)
 	}
 
+	jwtManager := auth.NewJWTManager(cfg.JWT.Secret, cfg.JWT.Expiry, cfg.JWT.RefreshTTL)
+
+	userRepo := repository.NewUserRepository(dbPool, logger)
+	accountRepo := repository.NewAccountRepository(dbPool, logger)
+	transactionRepo := repository.NewTransactionRepository(dbPool, logger)
+
+	userSvc := service.NewUserService(userRepo, jwtManager, logger)
+	accountSvc := service.NewAccountService(accountRepo, userRepo, logger)
 	transferSvc := service.NewTransferService(dbPool, logger)
+	txSvc := service.NewTransactionService(transactionRepo, logger)
+
+	authHandler := handler.NewAuthHandler(userSvc, jwtManager)
+	accountHandler := handler.NewAccountHandler(accountSvc)
 	transferHandler := handler.NewTransferHandler(transferSvc)
-	router := handler.NewRouter(transferHandler)
+	transactionHandler := handler.NewTransactionHandler(txSvc, accountSvc)
+	router := handler.NewRouter(cfg, jwtManager, authHandler, accountHandler, transferHandler, transactionHandler)
 
 	return &Container{
 		Config:      cfg,
 		Logger:      logger,
 		DBPool:      dbPool,
 		HTTPHandler: router,
+		JWTManager:  jwtManager,
+		UserSvc:     userSvc,
+		AccountSvc:  accountSvc,
 		TransferSvc: transferSvc,
+		TxSvc:       txSvc,
 	}, nil
 }
 

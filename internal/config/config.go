@@ -22,11 +22,11 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	URL              string
-	MaxConns         int32
-	MinConns         int32
-	MaxConnLifetime  time.Duration
-	MaxConnIdleTime  time.Duration
+	URL               string
+	MaxConns          int32
+	MinConns          int32
+	MaxConnLifetime   time.Duration
+	MaxConnIdleTime   time.Duration
 	HealthCheckPeriod time.Duration
 }
 

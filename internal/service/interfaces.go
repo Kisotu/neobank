@@ -28,6 +28,7 @@ type TransferService interface {
 }
 
 type TransactionService interface {
+	GetByID(ctx context.Context, transactionID uuid.UUID) (*TransactionResponse, error)
 	ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*TransactionResponse, error)
 }
 

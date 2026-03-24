@@ -9,7 +9,11 @@ import (
 
 var (
 	ErrAccountNotFound               = errors.New("account not found")
+	ErrTransactionNotFound           = errors.New("transaction not found")
 	ErrUserNotFound                  = errors.New("user not found")
+	ErrDuplicateUser                 = errors.New("user already exists")
+	ErrInvalidCredentials            = errors.New("invalid credentials")
+	ErrUnauthorized                  = errors.New("unauthorized")
 	ErrInsufficientFunds             = errors.New("insufficient funds")
 	ErrAccountFrozen                 = errors.New("account is frozen")
 	ErrInvalidTransfer               = errors.New("invalid transfer")

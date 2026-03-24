@@ -305,4 +305,4 @@ internal/service/    Use-case orchestration
 
 ## License
 
-No license file is currently included. Add one before public distribution.
+No license file is currently included.

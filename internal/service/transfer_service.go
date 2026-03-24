@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
@@ -20,9 +19,19 @@ import (
 	"github.com/username/banking-app/internal/repository"
 )
 
+type transferTxDeps struct {
+	accountRepo     repository.AccountRepository
+	transferRepo    repository.TransferRepository
+	transactionRepo repository.TransactionRepository
+}
+
+type transferRunInTx func(ctx context.Context, fn func(deps transferTxDeps) error) error
+
 type transferService struct {
-	db     *pgxpool.Pool
-	logger *slog.Logger
+	accountRepo  repository.AccountRepository
+	transferRepo repository.TransferRepository
+	runInTx      transferRunInTx
+	logger       *slog.Logger
 }
 
 const (
@@ -35,15 +44,70 @@ func NewTransferService(db *pgxpool.Pool, logger *slog.Logger) TransferService {
 		logger = slog.Default()
 	}
 
+	if db == nil {
+		return &transferService{logger: logger}
+	}
+
+	baseAccountRepo := repository.NewAccountRepository(db, logger)
+	baseTransferRepo := repository.NewTransferRepository(db, logger)
+
+	runInTx := func(ctx context.Context, fn func(deps transferTxDeps) error) error {
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin tx: %w", err)
+		}
+
+		defer func() {
+			if p := recover(); p != nil {
+				_ = tx.Rollback(ctx)
+				panic(p)
+			}
+		}()
+
+		deps := transferTxDeps{
+			accountRepo:     repository.NewAccountRepository(tx, logger),
+			transferRepo:    repository.NewTransferRepository(tx, logger),
+			transactionRepo: repository.NewTransactionRepository(tx, logger),
+		}
+
+		if err := fn(deps); err != nil {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				return fmt.Errorf("tx error: %v, rollback error: %w", err, rbErr)
+			}
+			return err
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit tx: %w", err)
+		}
+
+		return nil
+	}
+
+	return newTransferServiceWithDependencies(baseAccountRepo, baseTransferRepo, runInTx, logger)
+}
+
+func newTransferServiceWithDependencies(
+	accountRepo repository.AccountRepository,
+	transferRepo repository.TransferRepository,
+	runInTx transferRunInTx,
+	logger *slog.Logger,
+) *transferService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &transferService{
-		db:     db,
-		logger: logger,
+		accountRepo:  accountRepo,
+		transferRepo: transferRepo,
+		runInTx:      runInTx,
+		logger:       logger,
 	}
 }
 
 func (s *transferService) Transfer(ctx context.Context, userID uuid.UUID, req *TransferRequest) (*TransferResponse, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("transfer service db is nil")
+	if s.transferRepo == nil || s.runInTx == nil {
+		return nil, fmt.Errorf("transfer service dependencies are not configured")
 	}
 
 	if req == nil {
@@ -64,10 +128,9 @@ func (s *transferService) Transfer(ctx context.Context, userID uuid.UUID, req *T
 		currency = "USD"
 	}
 
-	transferRepo := repository.NewTransferRepository(s.db, s.logger)
 	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
 	if idempotencyKey != "" {
-		existing, err := transferRepo.GetByReference(ctx, idempotencyKey)
+		existing, err := s.transferRepo.GetByReference(ctx, idempotencyKey)
 		if err == nil {
 			return toTransferResponse(existing), nil
 		}
@@ -79,10 +142,14 @@ func (s *transferService) Transfer(ctx context.Context, userID uuid.UUID, req *T
 	var transfer *domain.Transfer
 	for attempt := 1; attempt <= transferMaxRetries; attempt++ {
 		transfer = nil
-		err = s.execInTx(ctx, func(tx pgx.Tx) error {
-			accountRepo := repository.NewAccountRepository(tx, s.logger)
-			transferRepo := repository.NewTransferRepository(tx, s.logger)
-			transactionRepo := repository.NewTransactionRepository(tx, s.logger)
+		err = s.runInTx(ctx, func(deps transferTxDeps) error {
+			if deps.accountRepo == nil || deps.transferRepo == nil || deps.transactionRepo == nil {
+				return fmt.Errorf("transfer transactional dependencies are nil")
+			}
+
+			accountRepo := deps.accountRepo
+			transferRepo := deps.transferRepo
+			transactionRepo := deps.transactionRepo
 
 			accountIDs := []uuid.UUID{req.FromAccountID, req.ToAccountID}
 			sort.Slice(accountIDs, func(i, j int) bool {
@@ -218,21 +285,19 @@ func (s *transferService) Transfer(ctx context.Context, userID uuid.UUID, req *T
 }
 
 func (s *transferService) GetTransfer(ctx context.Context, userID, transferID uuid.UUID) (*TransferResponse, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("transfer service db is nil")
+	if s.transferRepo == nil || s.accountRepo == nil {
+		return nil, fmt.Errorf("transfer service dependencies are not configured")
 	}
 
-	transferRepo := repository.NewTransferRepository(s.db, s.logger)
-	accountRepo := repository.NewAccountRepository(s.db, s.logger)
-	transfer, err := transferRepo.GetByID(ctx, transferID)
+	transfer, err := s.transferRepo.GetByID(ctx, transferID)
 	if err != nil {
 		return nil, err
 	}
-	fromAccount, err := accountRepo.GetByID(ctx, transfer.FromAccountID)
+	fromAccount, err := s.accountRepo.GetByID(ctx, transfer.FromAccountID)
 	if err != nil {
 		return nil, err
 	}
-	toAccount, err := accountRepo.GetByID(ctx, transfer.ToAccountID)
+	toAccount, err := s.accountRepo.GetByID(ctx, transfer.ToAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +309,8 @@ func (s *transferService) GetTransfer(ctx context.Context, userID, transferID uu
 }
 
 func (s *transferService) ListTransfers(ctx context.Context, userID, accountID uuid.UUID, limit, offset int) ([]*TransferResponse, error) {
-	if s.db == nil {
-		return nil, fmt.Errorf("transfer service db is nil")
+	if s.transferRepo == nil || s.accountRepo == nil {
+		return nil, fmt.Errorf("transfer service dependencies are not configured")
 	}
 
 	if limit <= 0 {
@@ -255,8 +320,7 @@ func (s *transferService) ListTransfers(ctx context.Context, userID, accountID u
 		offset = 0
 	}
 
-	accountRepo := repository.NewAccountRepository(s.db, s.logger)
-	account, err := accountRepo.GetByID(ctx, accountID)
+	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -264,8 +328,7 @@ func (s *transferService) ListTransfers(ctx context.Context, userID, accountID u
 		return nil, domain.ErrForbidden
 	}
 
-	transferRepo := repository.NewTransferRepository(s.db, s.logger)
-	transfers, err := transferRepo.ListByAccount(ctx, accountID, limit, offset)
+	transfers, err := s.transferRepo.ListByAccount(ctx, accountID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -277,34 +340,6 @@ func (s *transferService) ListTransfers(ctx context.Context, userID, accountID u
 
 	return responses, nil
 }
-
-func (s *transferService) execInTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx)
-			panic(p)
-		}
-	}()
-
-	if err := fn(tx); err != nil {
-		if rbErr := tx.Rollback(ctx); rbErr != nil {
-			return fmt.Errorf("tx error: %v, rollback error: %w", err, rbErr)
-		}
-		return err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
-	}
-
-	return nil
-}
-
 func findAccounts(accounts []*domain.Account, fromID, toID uuid.UUID) (from *domain.Account, to *domain.Account) {
 	for _, account := range accounts {
 		if account.ID == fromID {

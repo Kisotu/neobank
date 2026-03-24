@@ -31,9 +31,9 @@ LIMIT 1;
 
 -- name: UpdateTransferStatus :exec
 UPDATE transfers
-SET status = $2,
+SET status = sqlc.arg(status)::text,
     completed_at = CASE
-        WHEN $2 = 'completed' THEN NOW()
+        WHEN sqlc.arg(status)::text = 'completed' THEN NOW()
         ELSE completed_at
     END
 WHERE id = $1;

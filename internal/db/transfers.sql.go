@@ -205,9 +205,9 @@ func (q *Queries) ListTransfersByAccount(ctx context.Context, arg *ListTransfers
 
 const updateTransferStatus = `-- name: UpdateTransferStatus :exec
 UPDATE transfers
-SET status = $2,
+SET status = $2::text,
     completed_at = CASE
-        WHEN $2 = 'completed' THEN NOW()
+        WHEN $2::text = 'completed' THEN NOW()
         ELSE completed_at
     END
 WHERE id = $1

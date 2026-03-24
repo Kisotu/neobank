@@ -1,4 +1,4 @@
-module github.com/username/banking-app
+module github.com/Kisotu/neobank
 
 go 1.24.0
 

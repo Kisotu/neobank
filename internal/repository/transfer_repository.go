@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/username/banking-app/internal/db"
-	"github.com/username/banking-app/internal/domain"
+	"github.com/Kisotu/neobank/internal/db"
+	"github.com/Kisotu/neobank/internal/domain"
 )
 
 type transferRepository struct {

@@ -7,8 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/username/banking-app/internal/auth"
-	"github.com/username/banking-app/internal/config"
+	"github.com/Kisotu/neobank/internal/auth"
+	"github.com/Kisotu/neobank/internal/config"
 )
 
 func NewRouter(

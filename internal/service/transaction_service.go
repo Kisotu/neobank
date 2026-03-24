@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/username/banking-app/internal/domain"
-	"github.com/username/banking-app/internal/repository"
+	"github.com/Kisotu/neobank/internal/domain"
+	"github.com/Kisotu/neobank/internal/repository"
 )
 
 type transactionService struct {

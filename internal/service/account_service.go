@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/username/banking-app/internal/domain"
-	"github.com/username/banking-app/internal/domain/vo"
-	"github.com/username/banking-app/internal/repository"
+	"github.com/Kisotu/neobank/internal/domain"
+	"github.com/Kisotu/neobank/internal/domain/vo"
+	"github.com/Kisotu/neobank/internal/repository"
 )
 
 type accountService struct {

@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
-	"github.com/username/banking-app/internal/db"
-	"github.com/username/banking-app/internal/domain"
+	"github.com/Kisotu/neobank/internal/db"
+	"github.com/Kisotu/neobank/internal/domain"
 )
 
 type accountRepository struct {

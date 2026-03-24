@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/username/banking-app/internal/config"
+	"github.com/Kisotu/neobank/internal/config"
 )
 
 func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {

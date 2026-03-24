@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/username/banking-app/internal/domain"
+	"github.com/Kisotu/neobank/internal/domain"
 )
 
 type ErrorResponse struct {

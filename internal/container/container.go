@@ -10,12 +10,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/username/banking-app/internal/auth"
-	"github.com/username/banking-app/internal/config"
-	appdb "github.com/username/banking-app/internal/db"
-	"github.com/username/banking-app/internal/handler"
-	"github.com/username/banking-app/internal/repository"
-	"github.com/username/banking-app/internal/service"
+	"github.com/Kisotu/neobank/internal/auth"
+	"github.com/Kisotu/neobank/internal/config"
+	appdb "github.com/Kisotu/neobank/internal/db"
+	"github.com/Kisotu/neobank/internal/handler"
+	"github.com/Kisotu/neobank/internal/repository"
+	"github.com/Kisotu/neobank/internal/service"
 )
 
 type Container struct {

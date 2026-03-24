@@ -3,8 +3,8 @@ package repository
 import (
 	"github.com/google/uuid"
 
-	"github.com/username/banking-app/internal/db"
-	"github.com/username/banking-app/internal/domain"
+	"github.com/Kisotu/neobank/internal/db"
+	"github.com/Kisotu/neobank/internal/domain"
 )
 
 func toDomainUser(m *db.User) *domain.User {

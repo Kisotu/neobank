@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/username/banking-app/internal/container"
+	"github.com/Kisotu/neobank/internal/container"
 )
 
 func main() {

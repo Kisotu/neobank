@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/username/banking-app/internal/domain"
+	"github.com/Kisotu/neobank/internal/domain"
 )
 
 type updateBalanceCall struct {

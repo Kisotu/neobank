@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/username/banking-app/internal/auth"
-	"github.com/username/banking-app/internal/domain"
-	"github.com/username/banking-app/internal/repository"
+	"github.com/Kisotu/neobank/internal/auth"
+	"github.com/Kisotu/neobank/internal/domain"
+	"github.com/Kisotu/neobank/internal/repository"
 )
 
 type userService struct {

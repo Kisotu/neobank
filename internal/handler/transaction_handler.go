@@ -10,9 +10,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/username/banking-app/internal/auth"
-	"github.com/username/banking-app/internal/handler/dto"
-	"github.com/username/banking-app/internal/service"
+	"github.com/Kisotu/neobank/internal/auth"
+	"github.com/Kisotu/neobank/internal/handler/dto"
+	"github.com/Kisotu/neobank/internal/service"
 )
 
 type TransactionHandler struct {

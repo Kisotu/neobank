@@ -3,11 +3,12 @@ package dto
 import "time"
 
 type CreateTransferRequest struct {
-	FromAccountID string `json:"from_account_id" validate:"required,uuid4"`
-	ToAccountID   string `json:"to_account_id" validate:"required,uuid4,nefield=FromAccountID"`
-	Amount        string `json:"amount" validate:"required"`
-	Currency      string `json:"currency" validate:"required,len=3"`
-	Description   string `json:"description" validate:"max=500"`
+	FromAccountID   string `json:"from_account_id" validate:"required,uuid4"`
+	ToAccountID     string `json:"to_account_id" validate:"required,uuid4,nefield=FromAccountID"`
+	Amount          string `json:"amount" validate:"required"`
+	Currency        string `json:"currency" validate:"required,len=3"`
+	ReferenceNumber string `json:"reference_number" validate:"omitempty,max=50"`
+	Description     string `json:"description" validate:"max=500"`
 }
 
 type TransferResponse struct {

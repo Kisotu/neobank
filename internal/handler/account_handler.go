@@ -86,14 +86,9 @@ func (h *AccountHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.service.GetAccount(r.Context(), accountID)
+	result, err := h.service.GetAccount(r.Context(), userID, accountID)
 	if err != nil {
 		handleDomainError(w, err)
-		return
-	}
-
-	if result.UserID != userID {
-		respondWithError(w, http.StatusForbidden, "FORBIDDEN", "account does not belong to user", nil)
 		return
 	}
 
@@ -113,18 +108,7 @@ func (h *AccountHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	account, err := h.service.GetAccount(r.Context(), accountID)
-	if err != nil {
-		handleDomainError(w, err)
-		return
-	}
-
-	if account.UserID != userID {
-		respondWithError(w, http.StatusForbidden, "FORBIDDEN", "account does not belong to user", nil)
-		return
-	}
-
-	balance, err := h.service.GetBalance(r.Context(), accountID)
+	balance, err := h.service.GetBalance(r.Context(), userID, accountID)
 	if err != nil {
 		handleDomainError(w, err)
 		return

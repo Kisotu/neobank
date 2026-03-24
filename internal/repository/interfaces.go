@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -38,4 +39,5 @@ type TransactionRepository interface {
 	Create(ctx context.Context, tx *domain.Transaction) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error)
 	ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*domain.Transaction, error)
+	ListByAccountInDateRange(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, limit, offset int) ([]*domain.Transaction, error)
 }

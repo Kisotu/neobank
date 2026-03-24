@@ -39,8 +39,12 @@ func handleDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrUnauthorized):
 		respondWithError(w, http.StatusUnauthorized, "UNAUTHORIZED", "unauthorized", nil)
+	case errors.Is(err, domain.ErrForbidden):
+		respondWithError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
 	case errors.Is(err, domain.ErrInvalidCredentials):
 		respondWithError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid email or password", nil)
+	case errors.Is(err, domain.ErrDuplicateTransfer):
+		respondWithError(w, http.StatusConflict, "DUPLICATE_TRANSFER", "duplicate transfer", nil)
 	case errors.Is(err, domain.ErrDuplicateUser):
 		respondWithError(w, http.StatusConflict, "DUPLICATE_USER", "user already exists", nil)
 	case errors.Is(err, domain.ErrUserNotFound):
@@ -57,6 +61,8 @@ func handleDomainError(w http.ResponseWriter, err error) {
 		respondWithError(w, http.StatusBadRequest, "INSUFFICIENT_FUNDS", insuffFunds.Error(), nil)
 	case errors.Is(err, domain.ErrSameAccountTransfer):
 		respondWithError(w, http.StatusBadRequest, "SAME_ACCOUNT_TRANSFER", "cannot transfer to same account", nil)
+	case errors.Is(err, domain.ErrInvalidTransactionType):
+		respondWithError(w, http.StatusBadRequest, "INVALID_TRANSACTION_TYPE", "invalid transaction type", nil)
 	case errors.Is(err, domain.ErrInvalidTransfer), errors.Is(err, domain.ErrInvalidAmount), errors.Is(err, domain.ErrInvalidCurrency):
 		respondWithError(w, http.StatusBadRequest, "INVALID_TRANSFER", err.Error(), nil)
 	default:

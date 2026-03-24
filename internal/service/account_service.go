@@ -72,10 +72,13 @@ func (s *accountService) CreateAccount(ctx context.Context, userID uuid.UUID, re
 	return mapAccountResponse(account), nil
 }
 
-func (s *accountService) GetAccount(ctx context.Context, accountID uuid.UUID) (*AccountResponse, error) {
+func (s *accountService) GetAccount(ctx context.Context, userID, accountID uuid.UUID) (*AccountResponse, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
+	}
+	if !account.IsOwner(userID) {
+		return nil, domain.ErrForbidden
 	}
 	return mapAccountResponse(account), nil
 }
@@ -94,10 +97,13 @@ func (s *accountService) ListAccounts(ctx context.Context, userID uuid.UUID) ([]
 	return items, nil
 }
 
-func (s *accountService) GetBalance(ctx context.Context, accountID uuid.UUID) (*BalanceResponse, error) {
+func (s *accountService) GetBalance(ctx context.Context, userID, accountID uuid.UUID) (*BalanceResponse, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
+	}
+	if !account.IsOwner(userID) {
+		return nil, domain.ErrForbidden
 	}
 
 	return &BalanceResponse{

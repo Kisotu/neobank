@@ -14,6 +14,7 @@ var (
 	ErrDuplicateUser                 = errors.New("user already exists")
 	ErrInvalidCredentials            = errors.New("invalid credentials")
 	ErrUnauthorized                  = errors.New("unauthorized")
+	ErrForbidden                     = errors.New("forbidden")
 	ErrInsufficientFunds             = errors.New("insufficient funds")
 	ErrAccountFrozen                 = errors.New("account is frozen")
 	ErrInvalidTransfer               = errors.New("invalid transfer")

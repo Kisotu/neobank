@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
@@ -23,6 +25,11 @@ type transferService struct {
 	logger *slog.Logger
 }
 
+const (
+	transferMaxRetries = 3
+	retryBackoffStep   = 50 * time.Millisecond
+)
+
 func NewTransferService(db *pgxpool.Pool, logger *slog.Logger) TransferService {
 	if logger == nil {
 		logger = slog.Default()
@@ -34,7 +41,7 @@ func NewTransferService(db *pgxpool.Pool, logger *slog.Logger) TransferService {
 	}
 }
 
-func (s *transferService) Transfer(ctx context.Context, req *TransferRequest) (*TransferResponse, error) {
+func (s *transferService) Transfer(ctx context.Context, userID uuid.UUID, req *TransferRequest) (*TransferResponse, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("transfer service db is nil")
 	}
@@ -57,111 +64,149 @@ func (s *transferService) Transfer(ctx context.Context, req *TransferRequest) (*
 		currency = "USD"
 	}
 
+	transferRepo := repository.NewTransferRepository(s.db, s.logger)
+	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
+	if idempotencyKey != "" {
+		existing, err := transferRepo.GetByReference(ctx, idempotencyKey)
+		if err == nil {
+			return toTransferResponse(existing), nil
+		}
+		if !errors.Is(err, domain.ErrInvalidTransfer) {
+			return nil, err
+		}
+	}
+
 	var transfer *domain.Transfer
-	err = s.execInTx(ctx, func(tx pgx.Tx) error {
-		accountRepo := repository.NewAccountRepository(tx, s.logger)
-		transferRepo := repository.NewTransferRepository(tx, s.logger)
-		transactionRepo := repository.NewTransactionRepository(tx, s.logger)
+	for attempt := 1; attempt <= transferMaxRetries; attempt++ {
+		transfer = nil
+		err = s.execInTx(ctx, func(tx pgx.Tx) error {
+			accountRepo := repository.NewAccountRepository(tx, s.logger)
+			transferRepo := repository.NewTransferRepository(tx, s.logger)
+			transactionRepo := repository.NewTransactionRepository(tx, s.logger)
 
-		accountIDs := []uuid.UUID{req.FromAccountID, req.ToAccountID}
-		sort.Slice(accountIDs, func(i, j int) bool {
-			return accountIDs[i].String() < accountIDs[j].String()
+			accountIDs := []uuid.UUID{req.FromAccountID, req.ToAccountID}
+			sort.Slice(accountIDs, func(i, j int) bool {
+				return accountIDs[i].String() < accountIDs[j].String()
+			})
+
+			accounts, err := accountRepo.LockForUpdate(ctx, accountIDs...)
+			if err != nil {
+				return err
+			}
+
+			fromAccount, toAccount := findAccounts(accounts, req.FromAccountID, req.ToAccountID)
+			if fromAccount == nil || toAccount == nil {
+				return domain.ErrAccountNotFound
+			}
+			if !fromAccount.IsOwner(userID) {
+				return domain.ErrForbidden
+			}
+
+			if !strings.EqualFold(fromAccount.Currency, currency) || !strings.EqualFold(toAccount.Currency, currency) {
+				return domain.ErrInvalidCurrency
+			}
+
+			if err := fromAccount.Debit(amount); err != nil {
+				return err
+			}
+
+			if err := toAccount.Credit(amount); err != nil {
+				return err
+			}
+
+			refValue := idempotencyKey
+			if refValue == "" {
+				ref, err := vo.GenerateReferenceNumber("TRX")
+				if err != nil {
+					return fmt.Errorf("generate reference number: %w", err)
+				}
+				refValue = ref.String()
+			}
+
+			transfer, err = domain.NewTransfer(
+				req.FromAccountID,
+				req.ToAccountID,
+				amount,
+				currency,
+				refValue,
+				req.Description,
+			)
+			if err != nil {
+				return err
+			}
+
+			if err := transferRepo.Create(ctx, transfer); err != nil {
+				if errors.Is(err, domain.ErrDuplicateTransfer) && idempotencyKey != "" {
+					existing, getErr := transferRepo.GetByReference(ctx, idempotencyKey)
+					if getErr != nil {
+						return getErr
+					}
+					transfer = existing
+					return nil
+				}
+				return err
+			}
+
+			if err := accountRepo.UpdateBalance(ctx, fromAccount.ID, fromAccount.Balance, fromAccount.Version); err != nil {
+				return err
+			}
+
+			if err := accountRepo.UpdateBalance(ctx, toAccount.ID, toAccount.Balance, toAccount.Version); err != nil {
+				return err
+			}
+
+			referenceID := transfer.ID
+			outTx := &domain.Transaction{
+				AccountID:       fromAccount.ID,
+				TransactionType: domain.TransactionTypeTransferOut,
+				Amount:          amount,
+				BalanceAfter:    fromAccount.Balance,
+				ReferenceID:     &referenceID,
+				Description:     strings.TrimSpace(req.Description),
+			}
+			if outTx.Description == "" {
+				outTx.Description = "transfer out"
+			}
+
+			if err := transactionRepo.Create(ctx, outTx); err != nil {
+				return err
+			}
+
+			inTx := &domain.Transaction{
+				AccountID:       toAccount.ID,
+				TransactionType: domain.TransactionTypeTransferIn,
+				Amount:          amount,
+				BalanceAfter:    toAccount.Balance,
+				ReferenceID:     &referenceID,
+				Description:     strings.TrimSpace(req.Description),
+			}
+			if inTx.Description == "" {
+				inTx.Description = "transfer in"
+			}
+
+			if err := transactionRepo.Create(ctx, inTx); err != nil {
+				return err
+			}
+
+			if err := transfer.Complete(nowUTC()); err != nil {
+				return err
+			}
+
+			if err := transferRepo.UpdateStatus(ctx, transfer.ID, transfer.Status); err != nil {
+				return err
+			}
+
+			return nil
 		})
+		if err == nil {
+			break
+		}
+		if !isRetryableTransferError(err) || attempt == transferMaxRetries {
+			break
+		}
+		time.Sleep(time.Duration(attempt) * retryBackoffStep)
+	}
 
-		accounts, err := accountRepo.LockForUpdate(ctx, accountIDs...)
-		if err != nil {
-			return err
-		}
-
-		fromAccount, toAccount := findAccounts(accounts, req.FromAccountID, req.ToAccountID)
-		if fromAccount == nil || toAccount == nil {
-			return domain.ErrAccountNotFound
-		}
-
-		if !strings.EqualFold(fromAccount.Currency, currency) || !strings.EqualFold(toAccount.Currency, currency) {
-			return domain.ErrInvalidCurrency
-		}
-
-		if err := fromAccount.Debit(amount); err != nil {
-			return err
-		}
-
-		if err := toAccount.Credit(amount); err != nil {
-			return err
-		}
-
-		ref, err := vo.GenerateReferenceNumber("TRX")
-		if err != nil {
-			return fmt.Errorf("generate reference number: %w", err)
-		}
-
-		transfer, err = domain.NewTransfer(
-			req.FromAccountID,
-			req.ToAccountID,
-			amount,
-			currency,
-			ref.String(),
-			req.Description,
-		)
-		if err != nil {
-			return err
-		}
-
-		if err := transferRepo.Create(ctx, transfer); err != nil {
-			return err
-		}
-
-		if err := accountRepo.UpdateBalance(ctx, fromAccount.ID, fromAccount.Balance, fromAccount.Version); err != nil {
-			return err
-		}
-
-		if err := accountRepo.UpdateBalance(ctx, toAccount.ID, toAccount.Balance, toAccount.Version); err != nil {
-			return err
-		}
-
-		referenceID := transfer.ID
-		outTx := &domain.Transaction{
-			AccountID:       fromAccount.ID,
-			TransactionType: domain.TransactionTypeTransferOut,
-			Amount:          amount,
-			BalanceAfter:    fromAccount.Balance,
-			ReferenceID:     &referenceID,
-			Description:     strings.TrimSpace(req.Description),
-		}
-		if outTx.Description == "" {
-			outTx.Description = "transfer out"
-		}
-
-		if err := transactionRepo.Create(ctx, outTx); err != nil {
-			return err
-		}
-
-		inTx := &domain.Transaction{
-			AccountID:       toAccount.ID,
-			TransactionType: domain.TransactionTypeTransferIn,
-			Amount:          amount,
-			BalanceAfter:    toAccount.Balance,
-			ReferenceID:     &referenceID,
-			Description:     strings.TrimSpace(req.Description),
-		}
-		if inTx.Description == "" {
-			inTx.Description = "transfer in"
-		}
-
-		if err := transactionRepo.Create(ctx, inTx); err != nil {
-			return err
-		}
-
-		if err := transfer.Complete(nowUTC()); err != nil {
-			return err
-		}
-
-		if err := transferRepo.UpdateStatus(ctx, transfer.ID, transfer.Status); err != nil {
-			return err
-		}
-
-		return nil
-	})
 	if err != nil {
 		s.logger.ErrorContext(ctx, "transfer failed", "from_account_id", req.FromAccountID.String(), "to_account_id", req.ToAccountID.String(), "error", err.Error())
 		return nil, err
@@ -172,21 +217,33 @@ func (s *transferService) Transfer(ctx context.Context, req *TransferRequest) (*
 	return resp, nil
 }
 
-func (s *transferService) GetTransfer(ctx context.Context, transferID uuid.UUID) (*TransferResponse, error) {
+func (s *transferService) GetTransfer(ctx context.Context, userID, transferID uuid.UUID) (*TransferResponse, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("transfer service db is nil")
 	}
 
 	transferRepo := repository.NewTransferRepository(s.db, s.logger)
+	accountRepo := repository.NewAccountRepository(s.db, s.logger)
 	transfer, err := transferRepo.GetByID(ctx, transferID)
 	if err != nil {
 		return nil, err
+	}
+	fromAccount, err := accountRepo.GetByID(ctx, transfer.FromAccountID)
+	if err != nil {
+		return nil, err
+	}
+	toAccount, err := accountRepo.GetByID(ctx, transfer.ToAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if !fromAccount.IsOwner(userID) && !toAccount.IsOwner(userID) {
+		return nil, domain.ErrForbidden
 	}
 
 	return toTransferResponse(transfer), nil
 }
 
-func (s *transferService) ListTransfers(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*TransferResponse, error) {
+func (s *transferService) ListTransfers(ctx context.Context, userID, accountID uuid.UUID, limit, offset int) ([]*TransferResponse, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("transfer service db is nil")
 	}
@@ -196,6 +253,15 @@ func (s *transferService) ListTransfers(ctx context.Context, accountID uuid.UUID
 	}
 	if offset < 0 {
 		offset = 0
+	}
+
+	accountRepo := repository.NewAccountRepository(s.db, s.logger)
+	account, err := accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if !account.IsOwner(userID) {
+		return nil, domain.ErrForbidden
 	}
 
 	transferRepo := repository.NewTransferRepository(s.db, s.logger)
@@ -272,4 +338,15 @@ func toTransferResponse(transfer *domain.Transfer) *TransferResponse {
 
 func nowUTC() time.Time {
 	return time.Now().UTC()
+}
+
+func isRetryableTransferError(err error) bool {
+	if errors.Is(err, domain.ErrOptimisticLock) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "40001" || pgErr.Code == "40P01"
+	}
+	return false
 }

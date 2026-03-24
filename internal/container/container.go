@@ -52,12 +52,12 @@ func Build(ctx context.Context) (*Container, error) {
 	userSvc := service.NewUserService(userRepo, jwtManager, logger)
 	accountSvc := service.NewAccountService(accountRepo, userRepo, logger)
 	transferSvc := service.NewTransferService(dbPool, logger)
-	txSvc := service.NewTransactionService(transactionRepo, logger)
+	txSvc := service.NewTransactionService(transactionRepo, accountRepo, logger)
 
 	authHandler := handler.NewAuthHandler(userSvc, jwtManager)
 	accountHandler := handler.NewAccountHandler(accountSvc)
 	transferHandler := handler.NewTransferHandler(transferSvc)
-	transactionHandler := handler.NewTransactionHandler(txSvc, accountSvc)
+	transactionHandler := handler.NewTransactionHandler(txSvc)
 	router := handler.NewRouter(cfg, jwtManager, authHandler, accountHandler, transferHandler, transactionHandler)
 
 	return &Container{

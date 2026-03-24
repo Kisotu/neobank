@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -13,12 +16,11 @@ import (
 )
 
 type TransactionHandler struct {
-	service        service.TransactionService
-	accountService service.AccountService
+	service service.TransactionService
 }
 
-func NewTransactionHandler(s service.TransactionService, accountService service.AccountService) *TransactionHandler {
-	return &TransactionHandler{service: s, accountService: accountService}
+func NewTransactionHandler(s service.TransactionService) *TransactionHandler {
+	return &TransactionHandler{service: s}
 }
 
 func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Request) {
@@ -34,20 +36,13 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	account, err := h.accountService.GetAccount(r.Context(), accountID)
+	filter, err := parseTransactionFilters(r)
 	if err != nil {
-		handleDomainError(w, err)
-		return
-	}
-	if account.UserID != userID {
-		respondWithError(w, http.StatusForbidden, "FORBIDDEN", "account does not belong to user", nil)
+		respondWithError(w, http.StatusBadRequest, "INVALID_FILTER", err.Error(), nil)
 		return
 	}
 
-	limit := parseQueryInt(r, "limit", 50)
-	offset := parseQueryInt(r, "offset", 0)
-
-	items, err := h.service.ListByAccount(r.Context(), accountID, limit, offset)
+	items, err := h.service.ListByAccount(r.Context(), userID, accountID, filter)
 	if err != nil {
 		handleDomainError(w, err)
 		return
@@ -62,7 +57,7 @@ func (h *TransactionHandler) ListByAccount(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	_, ok := auth.UserIDFromContext(r.Context())
+	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
 		respondWithError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing auth context", nil)
 		return
@@ -74,7 +69,7 @@ func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.GetByID(r.Context(), transactionID)
+	item, err := h.service.GetByID(r.Context(), userID, transactionID)
 	if err != nil {
 		handleDomainError(w, err)
 		return
@@ -93,6 +88,51 @@ func parseQueryInt(r *http.Request, key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func parseTransactionFilters(r *http.Request) (*service.TransactionListFilter, error) {
+	filter := &service.TransactionListFilter{
+		Limit:  parseQueryInt(r, "limit", 50),
+		Offset: parseQueryInt(r, "offset", 0),
+	}
+
+	if rawType := strings.TrimSpace(r.URL.Query().Get("type")); rawType != "" {
+		filter.TransactionType = rawType
+	}
+
+	if rawFrom := strings.TrimSpace(r.URL.Query().Get("from")); rawFrom != "" {
+		parsed := parseDate(rawFrom)
+		if parsed == nil {
+			return nil, errors.New("invalid 'from' date format, expected RFC3339 or YYYY-MM-DD")
+		}
+		filter.StartDate = parsed
+	}
+
+	if rawTo := strings.TrimSpace(r.URL.Query().Get("to")); rawTo != "" {
+		parsed := parseDate(rawTo)
+		if parsed == nil {
+			return nil, errors.New("invalid 'to' date format, expected RFC3339 or YYYY-MM-DD")
+		}
+		filter.EndDate = parsed
+	}
+
+	return filter, nil
+}
+
+func parseDate(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if ts, err := time.Parse(time.RFC3339, value); err == nil {
+		utc := ts.UTC()
+		return &utc
+	}
+	if d, err := time.Parse("2006-01-02", value); err == nil {
+		utc := d.UTC()
+		return &utc
+	}
+	return nil
 }
 
 func mapTransactionDTO(item *service.TransactionResponse) dto.TransactionResponse {

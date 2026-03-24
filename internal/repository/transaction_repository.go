@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/username/banking-app/internal/db"
 	"github.com/username/banking-app/internal/domain"
@@ -71,6 +73,26 @@ func (r *transactionRepository) ListByAccount(ctx context.Context, accountID uui
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list transactions by account: %w", err)
+	}
+
+	transactions := make([]*domain.Transaction, 0, len(rows))
+	for _, row := range rows {
+		transactions = append(transactions, toDomainTransaction(row))
+	}
+
+	return transactions, nil
+}
+
+func (r *transactionRepository) ListByAccountInDateRange(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, limit, offset int) ([]*domain.Transaction, error) {
+	rows, err := r.queries.ListTransactionsByDateRange(ctx, &db.ListTransactionsByDateRangeParams{
+		AccountID:   toPgUUID(accountID),
+		CreatedAt:   pgtype.Timestamptz{Time: startDate, Valid: true},
+		CreatedAt_2: pgtype.Timestamptz{Time: endDate, Valid: true},
+		Limit:       int32(limit),
+		Offset:      int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list transactions by date range: %w", err)
 	}
 
 	transactions := make([]*domain.Transaction, 0, len(rows))

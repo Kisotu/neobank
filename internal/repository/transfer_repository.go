@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/username/banking-app/internal/db"
 	"github.com/username/banking-app/internal/domain"
@@ -44,6 +45,10 @@ func (r *transferRepository) Create(ctx context.Context, transfer *domain.Transf
 		Description:     toNullableText(transfer.Description),
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrDuplicateTransfer
+		}
 		return fmt.Errorf("create transfer: %w", err)
 	}
 

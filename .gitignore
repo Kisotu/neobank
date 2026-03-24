@@ -1,0 +1,11 @@
+AGENTS.md
+todos.md
+
+# Local environment files
+.env
+
+# Build outputs
+bin/
+
+# IDE or OS artifacts
+.DS_Store

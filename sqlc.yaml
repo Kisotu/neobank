@@ -18,6 +18,8 @@ sql:
         emit_params_struct_pointers: true
         json_tags_case_style: "snake"
         overrides:
+          - db_type: "pg_catalog.uuid"
+            go_type: "github.com/google/uuid.UUID"
           - db_type: "pg_catalog.int8"
             go_type: "int64"
           - db_type: "pg_catalog.numeric"

@@ -6,8 +6,7 @@ INSERT INTO transfers (
     currency,
     status,
     reference_number,
-    description,
-    completed_at
+    description
 ) VALUES (
     $1,
     $2,
@@ -15,8 +14,7 @@ INSERT INTO transfers (
     $4,
     $5,
     $6,
-    $7,
-    $8
+    $7
 ) RETURNING *;
 
 -- name: GetTransferByID :one
@@ -34,7 +32,10 @@ LIMIT 1;
 -- name: UpdateTransferStatus :exec
 UPDATE transfers
 SET status = $2,
-    completed_at = $3
+    completed_at = CASE
+        WHEN $2 = 'completed' THEN NOW()
+        ELSE completed_at
+    END
 WHERE id = $1;
 
 -- name: ListTransfersByAccount :many

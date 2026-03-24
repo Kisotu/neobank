@@ -11,9 +11,9 @@ import (
 type TransactionType string
 
 const (
-	TransactionTypeDeposit    TransactionType = "deposit"
-	TransactionTypeWithdrawal TransactionType = "withdrawal"
-	TransactionTypeTransferIn TransactionType = "transfer_in"
+	TransactionTypeDeposit     TransactionType = "deposit"
+	TransactionTypeWithdrawal  TransactionType = "withdrawal"
+	TransactionTypeTransferIn  TransactionType = "transfer_in"
 	TransactionTypeTransferOut TransactionType = "transfer_out"
 )
 

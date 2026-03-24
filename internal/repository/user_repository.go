@@ -34,7 +34,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		return err
 	}
 
-	created, err := r.queries.CreateUser(ctx, db.CreateUserParams{
+	created, err := r.queries.CreateUser(ctx, &db.CreateUserParams{
 		Email:        user.Email,
 		PasswordHash: user.PasswordHash,
 		FullName:     user.FullName,
@@ -49,7 +49,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 }
 
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
-	row, err := r.queries.GetUserByID(ctx, id)
+	row, err := r.queries.GetUserByID(ctx, toPgUUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrUserNotFound
@@ -77,8 +77,8 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		return err
 	}
 
-	updated, err := r.queries.UpdateUser(ctx, db.UpdateUserParams{
-		ID:       user.ID,
+	updated, err := r.queries.UpdateUser(ctx, &db.UpdateUserParams{
+		ID:       toPgUUID(user.ID),
 		Email:    user.Email,
 		FullName: user.FullName,
 	})
@@ -95,7 +95,7 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	if err := r.queries.DeleteUser(ctx, id); err != nil {
+	if err := r.queries.DeleteUser(ctx, toPgUUID(id)); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
 

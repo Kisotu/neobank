@@ -36,5 +36,6 @@ type TransferRepository interface {
 
 type TransactionRepository interface {
 	Create(ctx context.Context, tx *domain.Transaction) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error)
 	ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*domain.Transaction, error)
 }

@@ -1,8 +1,6 @@
 package repository
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 
 	"github.com/username/banking-app/internal/db"
@@ -14,20 +12,15 @@ func toDomainUser(m *db.User) *domain.User {
 		return nil
 	}
 
-	var deletedAt *time.Time
-	if m.DeletedAt.Valid {
-		value := m.DeletedAt.Time
-		deletedAt = &value
-	}
-
 	return &domain.User{
-		ID:           m.ID,
+		ID:           fromPgUUID(m.ID),
 		Email:        m.Email,
 		PasswordHash: m.PasswordHash,
 		FullName:     m.FullName,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
-		DeletedAt:    deletedAt,
+		Status:       domain.UserStatusActive,
+		CreatedAt:    fromPgTime(m.CreatedAt),
+		UpdatedAt:    fromPgTime(m.UpdatedAt),
+		DeletedAt:    fromNullablePgTime(m.DeletedAt),
 	}
 }
 
@@ -37,16 +30,16 @@ func toDomainAccount(m *db.Account) *domain.Account {
 	}
 
 	return &domain.Account{
-		ID:            m.ID,
-		UserID:        m.UserID,
+		ID:            fromPgUUID(m.ID),
+		UserID:        fromPgUUID(m.UserID),
 		AccountNumber: m.AccountNumber,
 		AccountType:   domain.AccountType(m.AccountType),
 		Balance:       m.Balance,
 		Currency:      m.Currency,
 		Status:        domain.AccountStatus(m.Status),
 		Version:       int(m.Version),
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
+		CreatedAt:     fromPgTime(m.CreatedAt),
+		UpdatedAt:     fromPgTime(m.UpdatedAt),
 	}
 }
 
@@ -63,14 +56,14 @@ func toDomainTransaction(m *db.Transaction) *domain.Transaction {
 	}
 
 	return &domain.Transaction{
-		ID:              m.ID,
-		AccountID:       m.AccountID,
+		ID:              fromPgUUID(m.ID),
+		AccountID:       fromPgUUID(m.AccountID),
 		TransactionType: domain.TransactionType(m.TransactionType),
 		Amount:          m.Amount,
 		BalanceAfter:    m.BalanceAfter,
 		ReferenceID:     ref,
 		Description:     m.Description.String,
-		CreatedAt:       m.CreatedAt,
+		CreatedAt:       fromPgTime(m.CreatedAt),
 	}
 }
 
@@ -79,22 +72,16 @@ func toDomainTransfer(m *db.Transfer) *domain.Transfer {
 		return nil
 	}
 
-	var completedAt *time.Time
-	if m.CompletedAt.Valid {
-		value := m.CompletedAt.Time
-		completedAt = &value
-	}
-
 	return &domain.Transfer{
-		ID:              m.ID,
-		FromAccountID:   m.FromAccountID,
-		ToAccountID:     m.ToAccountID,
+		ID:              fromPgUUID(m.ID),
+		FromAccountID:   fromPgUUID(m.FromAccountID),
+		ToAccountID:     fromPgUUID(m.ToAccountID),
 		Amount:          m.Amount,
 		Currency:        m.Currency,
 		Status:          domain.TransferStatus(m.Status),
 		ReferenceNumber: m.ReferenceNumber,
 		Description:     m.Description.String,
-		CreatedAt:       m.CreatedAt,
-		CompletedAt:     completedAt,
+		CreatedAt:       fromPgTime(m.CreatedAt),
+		CompletedAt:     fromNullablePgTime(m.CompletedAt),
 	}
 }

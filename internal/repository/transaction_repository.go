@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/username/banking-app/internal/db"
 	"github.com/username/banking-app/internal/domain"
@@ -32,8 +34,8 @@ func (r *transactionRepository) Create(ctx context.Context, tx *domain.Transacti
 		return err
 	}
 
-	created, err := r.queries.CreateTransaction(ctx, db.CreateTransactionParams{
-		AccountID:       tx.AccountID,
+	created, err := r.queries.CreateTransaction(ctx, &db.CreateTransactionParams{
+		AccountID:       toPgUUID(tx.AccountID),
 		TransactionType: string(tx.TransactionType),
 		Amount:          tx.Amount,
 		BalanceAfter:    tx.BalanceAfter,
@@ -49,9 +51,21 @@ func (r *transactionRepository) Create(ctx context.Context, tx *domain.Transacti
 	return nil
 }
 
+func (r *transactionRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Transaction, error) {
+	row, err := r.queries.GetTransactionByID(ctx, toPgUUID(id))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrTransactionNotFound
+		}
+		return nil, fmt.Errorf("get transaction by id: %w", err)
+	}
+
+	return toDomainTransaction(row), nil
+}
+
 func (r *transactionRepository) ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*domain.Transaction, error) {
-	rows, err := r.queries.ListTransactionsByAccountID(ctx, db.ListTransactionsByAccountIDParams{
-		AccountID: accountID,
+	rows, err := r.queries.ListTransactionsByAccountID(ctx, &db.ListTransactionsByAccountIDParams{
+		AccountID: toPgUUID(accountID),
 		Limit:     int32(limit),
 		Offset:    int32(offset),
 	})

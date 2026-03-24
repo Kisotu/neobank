@@ -34,9 +34,9 @@ func (r *transferRepository) Create(ctx context.Context, transfer *domain.Transf
 		return err
 	}
 
-	created, err := r.queries.CreateTransfer(ctx, db.CreateTransferParams{
-		FromAccountID:   transfer.FromAccountID,
-		ToAccountID:     transfer.ToAccountID,
+	created, err := r.queries.CreateTransfer(ctx, &db.CreateTransferParams{
+		FromAccountID:   toPgUUID(transfer.FromAccountID),
+		ToAccountID:     toPgUUID(transfer.ToAccountID),
 		Amount:          transfer.Amount,
 		Currency:        transfer.Currency,
 		Status:          string(transfer.Status),
@@ -53,7 +53,7 @@ func (r *transferRepository) Create(ctx context.Context, transfer *domain.Transf
 }
 
 func (r *transferRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Transfer, error) {
-	row, err := r.queries.GetTransferByID(ctx, id)
+	row, err := r.queries.GetTransferByID(ctx, toPgUUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrInvalidTransfer
@@ -77,8 +77,8 @@ func (r *transferRepository) GetByReference(ctx context.Context, ref string) (*d
 }
 
 func (r *transferRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.TransferStatus) error {
-	err := r.queries.UpdateTransferStatus(ctx, db.UpdateTransferStatusParams{
-		ID:     id,
+	err := r.queries.UpdateTransferStatus(ctx, &db.UpdateTransferStatusParams{
+		ID:     toPgUUID(id),
 		Status: string(status),
 	})
 	if err != nil {
@@ -90,8 +90,8 @@ func (r *transferRepository) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 }
 
 func (r *transferRepository) ListByAccount(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*domain.Transfer, error) {
-	rows, err := r.queries.ListTransfersByAccount(ctx, db.ListTransfersByAccountParams{
-		FromAccountID: accountID,
+	rows, err := r.queries.ListTransfersByAccount(ctx, &db.ListTransfersByAccountParams{
+		FromAccountID: toPgUUID(accountID),
 		Limit:         int32(limit),
 		Offset:        int32(offset),
 	})

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/username/banking-app/internal/db"
@@ -35,8 +36,8 @@ func (r *accountRepository) Create(ctx context.Context, account *domain.Account)
 		return err
 	}
 
-	created, err := r.queries.CreateAccount(ctx, db.CreateAccountParams{
-		UserID:        account.UserID,
+	created, err := r.queries.CreateAccount(ctx, &db.CreateAccountParams{
+		UserID:        toPgUUID(account.UserID),
 		AccountNumber: account.AccountNumber,
 		AccountType:   string(account.AccountType),
 		Balance:       account.Balance,
@@ -53,7 +54,7 @@ func (r *accountRepository) Create(ctx context.Context, account *domain.Account)
 }
 
 func (r *accountRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Account, error) {
-	row, err := r.queries.GetAccountByID(ctx, id)
+	row, err := r.queries.GetAccountByID(ctx, toPgUUID(id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrAccountNotFound
@@ -77,7 +78,7 @@ func (r *accountRepository) GetByNumber(ctx context.Context, number string) (*do
 }
 
 func (r *accountRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]*domain.Account, error) {
-	rows, err := r.queries.ListAccountsByUserID(ctx, userID)
+	rows, err := r.queries.ListAccountsByUserID(ctx, toPgUUID(userID))
 	if err != nil {
 		return nil, fmt.Errorf("list accounts by user id: %w", err)
 	}
@@ -91,8 +92,8 @@ func (r *accountRepository) ListByUserID(ctx context.Context, userID uuid.UUID) 
 }
 
 func (r *accountRepository) UpdateBalance(ctx context.Context, id uuid.UUID, balance decimal.Decimal, version int) error {
-	err := r.queries.UpdateAccountBalance(ctx, db.UpdateAccountBalanceParams{
-		ID:      id,
+	err := r.queries.UpdateAccountBalance(ctx, &db.UpdateAccountBalanceParams{
+		ID:      toPgUUID(id),
 		Balance: balance,
 		Version: int32(version),
 	})
@@ -108,7 +109,12 @@ func (r *accountRepository) UpdateBalance(ctx context.Context, id uuid.UUID, bal
 }
 
 func (r *accountRepository) LockForUpdate(ctx context.Context, ids ...uuid.UUID) ([]*domain.Account, error) {
-	rows, err := r.queries.ListAccountsWithLock(ctx, ids)
+	pgIDs := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		pgIDs = append(pgIDs, toPgUUID(id))
+	}
+
+	rows, err := r.queries.ListAccountsWithLock(ctx, pgIDs)
 	if err != nil {
 		return nil, fmt.Errorf("lock accounts for update: %w", err)
 	}

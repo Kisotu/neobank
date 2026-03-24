@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -19,6 +20,16 @@ type JWTManager struct {
 	secret     []byte
 	expiry     time.Duration
 	refreshTTL time.Duration
+}
+
+type authErrorResponse struct {
+	Error authErrorDetail `json:"error"`
+}
+
+type authErrorDetail struct {
+	Code    string      `json:"code"`
+	Message string      `json:"message"`
+	Details interface{} `json:"details,omitempty"`
 }
 
 type Claims struct {
@@ -125,18 +136,30 @@ func RequireAuth(jwtManager *JWTManager) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 			if authHeader == "" || !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeUnauthorizedJSON(w)
 				return
 			}
 
 			token := strings.TrimSpace(authHeader[7:])
 			userID, err := jwtManager.ParseAccessToken(token)
 			if err != nil {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeUnauthorizedJSON(w)
 				return
 			}
 
 			next.ServeHTTP(w, r.WithContext(ContextWithUserID(r.Context(), userID)))
 		})
 	}
+}
+
+func writeUnauthorizedJSON(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(authErrorResponse{
+		Error: authErrorDetail{
+			Code:    "UNAUTHORIZED",
+			Message: "unauthorized",
+			Details: nil,
+		},
+	})
 }

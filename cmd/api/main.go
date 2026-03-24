@@ -2,42 +2,43 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/username/banking-app/internal/container"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	ctx := context.Background()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	appContainer, err := container.Build(ctx)
+	if err != nil {
+		log.Fatalf("failed to build container: %v", err)
+	}
+	defer appContainer.Close()
+
+	addr := fmt.Sprintf("%s:%s", appContainer.Config.Server.Host, appContainer.Config.Server.Port)
 
 	server := &http.Server{
-		Addr:              ":" + port,
-		Handler:           mux,
+		Addr:              addr,
+		Handler:           appContainer.HTTPHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Printf("api server listening on :%s", port)
+		log.Printf("api server listening on %s", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server failed: %v", err)
 		}
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	<-ctx.Done()
+	<-sigCtx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

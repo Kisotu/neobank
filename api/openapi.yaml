@@ -1,15 +1,22 @@
 openapi: 3.0.3
 info:
-  title: Banking API
-  version: 0.1.0
-  description: Initial API scaffold for the banking application.
+  title: Neobank API
+  version: 1.0.0
+  description: API contract aligned with implemented routes and handler behavior.
 servers:
   - url: http://localhost:8080
 security:
   - bearerAuth: []
+tags:
+  - name: Health
+  - name: Auth
+  - name: Accounts
+  - name: Transfers
+  - name: Transactions
 paths:
   /health:
     get:
+      tags: [Health]
       summary: Health check
       operationId: healthCheck
       security: []
@@ -21,8 +28,78 @@ paths:
               schema:
                 type: string
                 example: ok
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                duplicateUser:
+                  value:
+                    error:
+                      code: DUPLICATE_USER
+                      message: user already exists
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidCredentials:
+                  value:
+                    error:
+                      code: INVALID_CREDENTIALS
+                      message: invalid email or password
+
   /api/v1/auth/refresh:
     post:
+      tags: [Auth]
       summary: Refresh token pair
       operationId: refreshAuthToken
       description: Rotates access and refresh tokens when a valid refresh token is provided.
@@ -41,19 +118,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
         "400":
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
         "401":
-          description: Invalid refresh token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/auth/logout:
     post:
+      tags: [Auth]
       summary: Stateless logout
       operationId: logout
       description: |
@@ -63,18 +134,144 @@ paths:
       responses:
         "204":
           description: Logout acknowledged
+
+  /api/v1/auth/profile:
+    get:
+      tags: [Auth]
+      summary: Get current profile
+      operationId: getProfile
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+    put:
+      tags: [Auth]
+      summary: Update current profile
+      operationId: updateProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "204":
+          description: Profile updated
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UserNotFound"
+        "409":
+          description: Duplicate user/email conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/accounts/:
+    post:
+      tags: [Accounts]
+      summary: Create account
+      operationId: createAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      tags: [Accounts]
+      summary: List user accounts
+      operationId: listAccounts
+      responses:
+        "200":
+          description: Accounts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/accounts/{id}:
+    get:
+      tags: [Accounts]
+      summary: Get account by ID
+      operationId: getAccountById
+      parameters:
+        - $ref: "#/components/parameters/AccountIdPath"
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "400":
+          description: Invalid account ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+
+  /api/v1/accounts/{id}/balance:
+    get:
+      tags: [Accounts]
+      summary: Get account balance
+      operationId: getAccountBalance
+      parameters:
+        - $ref: "#/components/parameters/AccountIdPath"
+      responses:
+        "200":
+          description: Account balance snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceResponse"
+        "400":
+          description: Invalid account ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+
   /api/v1/accounts/{id}/transfers:
     get:
+      tags: [Transfers]
       summary: List transfers by account
       operationId: listTransfersByAccount
       parameters:
-        - in: path
-          name: id
-          required: true
-          description: Account ID
-          schema:
-            type: string
-            format: uuid
+        - $ref: "#/components/parameters/AccountIdPath"
         - in: query
           name: limit
           required: false
@@ -114,23 +311,260 @@ paths:
                       code: INVALID_PAGINATION
                       message: limit must be greater than 0
         "401":
-          description: Unauthorized
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+
+  /api/v1/accounts/{id}/transactions:
+    get:
+      tags: [Transactions]
+      summary: List transactions by account
+      operationId: listTransactionsByAccount
+      parameters:
+        - $ref: "#/components/parameters/AccountIdPath"
+        - in: query
+          name: type
+          required: false
+          description: Transaction type filter.
+          schema:
+            type: string
+            enum: [deposit, withdrawal, transfer_in, transfer_out]
+        - in: query
+          name: from
+          required: false
+          description: Start date (RFC3339 or YYYY-MM-DD).
+          schema:
+            type: string
+            example: 2026-03-01
+        - in: query
+          name: to
+          required: false
+          description: End date (RFC3339 or YYYY-MM-DD).
+          schema:
+            type: string
+            example: 2026-03-31T23:59:59Z
+        - in: query
+          name: limit
+          required: false
+          description: Number of rows to return.
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+        - in: query
+          name: offset
+          required: false
+          description: Number of rows to skip.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Transaction history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransactionResponse"
+        "400":
+          description: Invalid account ID or filter values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidFilter:
+                  value:
+                    error:
+                      code: INVALID_FILTER
+                      message: invalid 'from' date format, expected RFC3339 or YYYY-MM-DD
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AccountNotFound"
+
+  /api/v1/transfers/:
+    post:
+      tags: [Transfers]
+      summary: Create transfer
+      operationId: createTransfer
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          description: Optional idempotency key. If both header and body reference_number are set, reference_number takes precedence.
+          schema:
+            type: string
+            maxLength: 50
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferRequest"
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Forbidden account state
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Account not found
+          $ref: "#/components/responses/AccountNotFound"
+        "409":
+          description: Duplicate transfer/idempotency conflict
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/transfers/{id}:
+    get:
+      tags: [Transfers]
+      summary: Get transfer by ID
+      operationId: getTransferById
+      parameters:
+        - $ref: "#/components/parameters/TransferIdPath"
+      responses:
+        "200":
+          description: Transfer details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+        "400":
+          description: Invalid transfer ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Transfer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/transactions/{id}:
+    get:
+      tags: [Transactions]
+      summary: Get transaction by ID
+      operationId: getTransactionById
+      parameters:
+        - $ref: "#/components/parameters/TransactionIdPath"
+      responses:
+        "200":
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionResponse"
+        "400":
+          description: Invalid transaction ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  parameters:
+    AccountIdPath:
+      in: path
+      name: id
+      required: true
+      description: Account ID
+      schema:
+        type: string
+        format: uuid
+    TransferIdPath:
+      in: path
+      name: id
+      required: true
+      description: Transfer ID
+      schema:
+        type: string
+        format: uuid
+    TransactionIdPath:
+      in: path
+      name: id
+      required: true
+      description: Transaction ID
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            unauthorized:
+              value:
+                error:
+                  code: UNAUTHORIZED
+                  message: unauthorized
+    UserNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            userNotFound:
+              value:
+                error:
+                  code: USER_NOT_FOUND
+                  message: user not found
+    AccountNotFound:
+      description: Account not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            accountNotFound:
+              value:
+                error:
+                  code: ACCOUNT_NOT_FOUND
+                  message: account not found
+
   schemas:
     ErrorResponse:
       type: object
@@ -149,8 +583,201 @@ components:
               type: string
             details:
               nullable: true
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - full_name
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 255
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 255
+
+    AuthResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - expires_in
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+
+    UserProfileResponse:
+      type: object
+      required:
+        - id
+        - email
+        - full_name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        status:
+          type: string
+
+    CreateAccountRequest:
+      type: object
+      required:
+        - account_type
+      properties:
+        account_type:
+          type: string
+          enum: [checking, savings]
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: USD
+
+    AccountResponse:
+      type: object
+      required:
+        - id
+        - user_id
+        - account_number
+        - account_type
+        - balance
+        - currency
+        - status
+        - version
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        account_number:
+          type: string
+        account_type:
+          type: string
+        balance:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BalanceResponse:
+      type: object
+      required:
+        - account_id
+        - balance
+        - currency
+        - version
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        balance:
+          type: string
+        currency:
+          type: string
+        version:
+          type: integer
+
+    CreateTransferRequest:
+      type: object
+      required:
+        - from_account_id
+        - to_account_id
+        - amount
+        - currency
+      properties:
+        from_account_id:
+          type: string
+          format: uuid
+        to_account_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+          example: "125.50"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: USD
+        reference_number:
+          type: string
+          maxLength: 50
+        description:
+          type: string
+          maxLength: 500
+
     TransferResponse:
       type: object
+      required:
+        - id
+        - from_account_id
+        - to_account_id
+        - amount
+        - currency
+        - status
+        - reference_number
+        - created_at
       properties:
         id:
           type: string
@@ -178,24 +805,37 @@ components:
           type: string
           format: date-time
           nullable: true
-    RefreshTokenRequest:
+
+    TransactionResponse:
       type: object
       required:
-        - refresh_token
+        - id
+        - account_id
+        - transaction_type
+        - amount
+        - balance_after
+        - description
+        - created_at
       properties:
-        refresh_token:
+        id:
           type: string
-    AuthResponse:
-      type: object
-      required:
-        - access_token
-        - refresh_token
-        - expires_in
-      properties:
-        access_token:
+          format: uuid
+        account_id:
           type: string
-        refresh_token:
+          format: uuid
+        transaction_type:
           type: string
-        expires_in:
-          type: integer
-          format: int64
+          enum: [deposit, withdrawal, transfer_in, transfer_out]
+        amount:
+          type: string
+        balance_after:
+          type: string
+        reference_id:
+          type: string
+          format: uuid
+          nullable: true
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time

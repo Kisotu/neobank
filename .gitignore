@@ -10,3 +10,4 @@ bin/
 # IDE or OS artifacts
 .DS_Store
 frontend-react-implementation-guide.md
+docs/

@@ -99,6 +99,10 @@ Base URL:
 
 - http://localhost:8080
 
+OpenAPI contract:
+
+- api/openapi.yaml (aligned with current router paths, auth requirements, and DTO payloads)
+
 Public routes:
 
 | Method | Path | Purpose |
@@ -309,7 +313,7 @@ internal/service/    Use-case orchestration
 
 ## Future Enhancements
 
-- Full OpenAPI documentation coverage for all routes
+- OpenAPI contract linting/validation in CI
 - Integration test suite with containerized PostgreSQL
 - Metrics/tracing and SLA-oriented observability
 - CI pipeline with migration validation and quality gates

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -538,6 +539,334 @@ func TestTransferService_Transfer_IdempotencyIntegration(t *testing.T) {
 		}
 		assertSingleBusinessEffect(t, ctx, pool, logger, fixture, first, decimal.RequireFromString("185.0000"), decimal.RequireFromString("95.0000"), idempotencyKey)
 	})
+}
+
+type concurrentAccountFixture struct {
+	userID    uuid.UUID
+	accountID uuid.UUID
+	balance   decimal.Decimal
+}
+
+type concurrentTransferOperation struct {
+	fromAccountID uuid.UUID
+	toAccountID   uuid.UUID
+	ownerUserID   uuid.UUID
+	amount        string
+	description   string
+	idemKey       string
+}
+
+func TestTransferService_Transfer_ConcurrencyIntegration(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL is not set; skipping integration test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("create pgx pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	if err := pool.Ping(ctx); err != nil {
+		t.Fatalf("ping database: %v", err)
+	}
+
+	if !integrationSchemaReady(ctx, pool) {
+		t.Skip("database schema not initialized; run migrations before integration tests")
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := NewTransferService(pool, logger)
+
+	t.Run("low contention A to B and B to A", func(t *testing.T) {
+		accounts, cleanup := seedConcurrentAccounts(t, ctx, pool, logger, 2, decimal.RequireFromString("5000.0000"))
+		defer cleanup()
+
+		scenario := "concurrency-low"
+		ops := make([]concurrentTransferOperation, 0, 24)
+		for i := 0; i < 24; i++ {
+			from := accounts[i%2]
+			to := accounts[(i+1)%2]
+			ops = append(ops, concurrentTransferOperation{
+				fromAccountID: from.accountID,
+				toAccountID:   to.accountID,
+				ownerUserID:   from.userID,
+				amount:        "1.0000",
+				description:   scenario,
+				idemKey:       fmt.Sprintf("%s-%03d", scenario, i),
+			})
+		}
+
+		errs := runConcurrentTransfers(t, svc, ops)
+		assertNoTransferErrors(t, errs)
+		assertConcurrencyInvariants(t, ctx, pool, logger, accounts, ops, scenario)
+	})
+
+	t.Run("medium contention fan in fan out", func(t *testing.T) {
+		accounts, cleanup := seedConcurrentAccounts(t, ctx, pool, logger, 4, decimal.RequireFromString("5000.0000"))
+		defer cleanup()
+
+		hub := accounts[0]
+		spokes := accounts[1:]
+		scenario := "concurrency-medium"
+		ops := make([]concurrentTransferOperation, 0, 90)
+		for i := 0; i < 90; i++ {
+			spoke := spokes[i%len(spokes)]
+			if i%2 == 0 {
+				ops = append(ops, concurrentTransferOperation{
+					fromAccountID: spoke.accountID,
+					toAccountID:   hub.accountID,
+					ownerUserID:   spoke.userID,
+					amount:        "1.0000",
+					description:   scenario,
+					idemKey:       fmt.Sprintf("%s-%03d", scenario, i),
+				})
+				continue
+			}
+
+			ops = append(ops, concurrentTransferOperation{
+				fromAccountID: hub.accountID,
+				toAccountID:   spoke.accountID,
+				ownerUserID:   hub.userID,
+				amount:        "1.0000",
+				description:   scenario,
+				idemKey:       fmt.Sprintf("%s-%03d", scenario, i),
+			})
+		}
+
+		errs := runConcurrentTransfers(t, svc, ops)
+		assertNoTransferErrors(t, errs)
+		assertConcurrencyInvariants(t, ctx, pool, logger, accounts, ops, scenario)
+	})
+
+	t.Run("high contention burst on shared hub", func(t *testing.T) {
+		accounts, cleanup := seedConcurrentAccounts(t, ctx, pool, logger, 6, decimal.RequireFromString("10000.0000"))
+		defer cleanup()
+
+		hub := accounts[0]
+		spokes := accounts[1:]
+		scenario := "concurrency-high"
+		ops := make([]concurrentTransferOperation, 0, 300)
+		for i := 0; i < 300; i++ {
+			spoke := spokes[i%len(spokes)]
+			if i%3 == 0 {
+				ops = append(ops, concurrentTransferOperation{
+					fromAccountID: hub.accountID,
+					toAccountID:   spoke.accountID,
+					ownerUserID:   hub.userID,
+					amount:        "1.0000",
+					description:   scenario,
+					idemKey:       fmt.Sprintf("%s-%03d", scenario, i),
+				})
+				continue
+			}
+
+			ops = append(ops, concurrentTransferOperation{
+				fromAccountID: spoke.accountID,
+				toAccountID:   hub.accountID,
+				ownerUserID:   spoke.userID,
+				amount:        "1.0000",
+				description:   scenario,
+				idemKey:       fmt.Sprintf("%s-%03d", scenario, i),
+			})
+		}
+
+		errs := runConcurrentTransfers(t, svc, ops)
+		assertNoTransferErrors(t, errs)
+		assertConcurrencyInvariants(t, ctx, pool, logger, accounts, ops, scenario)
+	})
+}
+
+func seedConcurrentAccounts(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	logger *slog.Logger,
+	count int,
+	initialBalance decimal.Decimal,
+) ([]concurrentAccountFixture, func()) {
+	t.Helper()
+
+	userRepo := repository.NewUserRepository(pool, logger)
+	accountRepo := repository.NewAccountRepository(pool, logger)
+	prefix := uuid.NewString()
+
+	fixtures := make([]concurrentAccountFixture, 0, count)
+	userIDs := make([]uuid.UUID, 0, count)
+	accountIDs := make([]uuid.UUID, 0, count)
+
+	for i := 0; i < count; i++ {
+		user := &domain.User{
+			Email:        fmt.Sprintf("%s-conc-user-%02d@example.com", prefix, i),
+			PasswordHash: "hash",
+			FullName:     fmt.Sprintf("Concurrent User %d", i),
+			Status:       domain.UserStatusActive,
+		}
+		if err := userRepo.Create(ctx, user); err != nil {
+			t.Fatalf("create concurrent user %d: %v", i, err)
+		}
+
+		account := &domain.Account{
+			UserID:        user.ID,
+			AccountNumber: fmt.Sprintf("C%017d", time.Now().UnixNano()+int64(i)),
+			AccountType:   domain.AccountTypeChecking,
+			Balance:       initialBalance,
+			Currency:      "USD",
+			Status:        domain.AccountStatusActive,
+		}
+		if err := accountRepo.Create(ctx, account); err != nil {
+			t.Fatalf("create concurrent account %d: %v", i, err)
+		}
+
+		fixtures = append(fixtures, concurrentAccountFixture{
+			userID:    user.ID,
+			accountID: account.ID,
+			balance:   initialBalance,
+		})
+		userIDs = append(userIDs, user.ID)
+		accountIDs = append(accountIDs, account.ID)
+	}
+
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM transactions WHERE account_id = ANY($1)`, accountIDs)
+		_, _ = pool.Exec(ctx, `DELETE FROM transfers WHERE from_account_id = ANY($1) OR to_account_id = ANY($1)`, accountIDs)
+		_, _ = pool.Exec(ctx, `DELETE FROM accounts WHERE id = ANY($1)`, accountIDs)
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = ANY($1)`, userIDs)
+	}
+
+	return fixtures, cleanup
+}
+
+func runConcurrentTransfers(t *testing.T, svc TransferService, ops []concurrentTransferOperation) []error {
+	t.Helper()
+
+	start := make(chan struct{})
+	errs := make([]error, 0)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := range ops {
+		op := ops[i]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			_, err := svc.Transfer(ctx, op.ownerUserID, &TransferRequest{
+				FromAccountID:  op.fromAccountID,
+				ToAccountID:    op.toAccountID,
+				Amount:         op.amount,
+				Currency:       "USD",
+				Description:    op.description,
+				IdempotencyKey: op.idemKey,
+			})
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	return errs
+}
+
+func assertNoTransferErrors(t *testing.T, errs []error) {
+	t.Helper()
+
+	if len(errs) == 0 {
+		return
+	}
+
+	for i := 0; i < len(errs) && i < 3; i++ {
+		t.Logf("concurrent transfer error[%d]: %v", i, errs[i])
+	}
+	t.Fatalf("expected all concurrent transfers to succeed, got %d errors", len(errs))
+}
+
+func assertConcurrencyInvariants(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	logger *slog.Logger,
+	accounts []concurrentAccountFixture,
+	ops []concurrentTransferOperation,
+	description string,
+) {
+	t.Helper()
+
+	accountRepo := repository.NewAccountRepository(pool, logger)
+	deltaByAccount := make(map[uuid.UUID]decimal.Decimal, len(accounts))
+	for _, account := range accounts {
+		deltaByAccount[account.accountID] = decimal.Zero
+	}
+
+	for _, op := range ops {
+		amount := decimal.RequireFromString(op.amount)
+		deltaByAccount[op.fromAccountID] = deltaByAccount[op.fromAccountID].Sub(amount)
+		deltaByAccount[op.toAccountID] = deltaByAccount[op.toAccountID].Add(amount)
+	}
+
+	for _, account := range accounts {
+		stored, err := accountRepo.GetByID(ctx, account.accountID)
+		if err != nil {
+			t.Fatalf("get account %s: %v", account.accountID, err)
+		}
+
+		expected := account.balance.Add(deltaByAccount[account.accountID])
+		if !stored.Balance.Equal(expected) {
+			t.Fatalf("unexpected balance for account %s: expected %s, got %s", account.accountID, expected, stored.Balance)
+		}
+		if stored.Balance.IsNegative() {
+			t.Fatalf("negative balance for account %s: %s", account.accountID, stored.Balance)
+		}
+	}
+
+	accountIDs := make([]uuid.UUID, 0, len(accounts))
+	for _, account := range accounts {
+		accountIDs = append(accountIDs, account.accountID)
+	}
+
+	var transferCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		 FROM transfers
+		 WHERE description = $1
+		   AND (from_account_id = ANY($2) OR to_account_id = ANY($2))`,
+		description,
+		accountIDs,
+	).Scan(&transferCount); err != nil {
+		t.Fatalf("count transfers for scenario %s: %v", description, err)
+	}
+	if transferCount != len(ops) {
+		t.Fatalf("expected %d transfer rows, got %d", len(ops), transferCount)
+	}
+
+	var transactionCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		 FROM transactions
+		 WHERE reference_id IN (
+			SELECT id FROM transfers
+			WHERE description = $1
+			  AND (from_account_id = ANY($2) OR to_account_id = ANY($2))
+		 )`,
+		description,
+		accountIDs,
+	).Scan(&transactionCount); err != nil {
+		t.Fatalf("count transactions for scenario %s: %v", description, err)
+	}
+	if transactionCount != transferCount*2 {
+		t.Fatalf("expected %d transactions, got %d", transferCount*2, transactionCount)
+	}
 }
 
 func seedTransferFixture(

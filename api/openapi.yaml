@@ -5,11 +5,14 @@ info:
   description: Initial API scaffold for the banking application.
 servers:
   - url: http://localhost:8080
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
       summary: Health check
       operationId: healthCheck
+      security: []
       responses:
         "200":
           description: Service is healthy
@@ -18,3 +21,118 @@ paths:
               schema:
                 type: string
                 example: ok
+  /api/v1/accounts/{id}/transfers:
+    get:
+      summary: List transfers by account
+      operationId: listTransfersByAccount
+      parameters:
+        - in: path
+          name: id
+          required: true
+          description: Account ID
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          required: false
+          description: Number of transfers to return.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 200
+        - in: query
+          name: offset
+          required: false
+          description: Number of transfers to skip.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Transfer history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TransferResponse"
+        "400":
+          description: Invalid account ID or pagination query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidPagination:
+                  value:
+                    error:
+                      code: INVALID_PAGINATION
+                      message: limit must be greater than 0
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              nullable: true
+    TransferResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_account_id:
+          type: string
+          format: uuid
+        to_account_id:
+          type: string
+          format: uuid
+        amount:
+          type: string
+        currency:
+          type: string
+        status:
+          type: string
+        reference_number:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true

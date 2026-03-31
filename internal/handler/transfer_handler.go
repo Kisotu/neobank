@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,11 @@ import (
 	"github.com/Kisotu/neobank/internal/auth"
 	"github.com/Kisotu/neobank/internal/handler/dto"
 	"github.com/Kisotu/neobank/internal/service"
+)
+
+const (
+	defaultTransferListLimit = 20
+	maxTransferListLimit     = 200
 )
 
 type TransferHandler struct {
@@ -114,7 +120,13 @@ func (h *TransferHandler) ListByAccount(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	items, err := h.service.ListTransfers(r.Context(), userID, accountID, 20, 0)
+	limit, offset, err := parseTransferListPagination(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "INVALID_PAGINATION", err.Error(), nil)
+		return
+	}
+
+	items, err := h.service.ListTransfers(r.Context(), userID, accountID, limit, offset)
 	if err != nil {
 		handleDomainError(w, err)
 		return
@@ -126,6 +138,51 @@ func (h *TransferHandler) ListByAccount(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, http.StatusOK, resp)
+}
+
+func parseTransferListPagination(r *http.Request) (int, int, error) {
+	limit, err := parseRequiredIntQuery(r, "limit", defaultTransferListLimit)
+	if err != nil {
+		return 0, 0, err
+	}
+	if limit <= 0 {
+		return 0, 0, &paginationError{message: "limit must be greater than 0"}
+	}
+	if limit > maxTransferListLimit {
+		return 0, 0, &paginationError{message: "limit must be less than or equal to 200"}
+	}
+
+	offset, err := parseRequiredIntQuery(r, "offset", 0)
+	if err != nil {
+		return 0, 0, err
+	}
+	if offset < 0 {
+		return 0, 0, &paginationError{message: "offset must be greater than or equal to 0"}
+	}
+
+	return limit, offset, nil
+}
+
+type paginationError struct {
+	message string
+}
+
+func (e *paginationError) Error() string {
+	return e.message
+}
+
+func parseRequiredIntQuery(r *http.Request, key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return fallback, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, &paginationError{message: key + " must be an integer"}
+	}
+
+	return value, nil
 }
 
 func mapTransferResponse(s *service.TransferResponse) dto.TransferResponse {

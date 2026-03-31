@@ -133,6 +133,11 @@ Transaction list filters:
 - limit: integer, default 50
 - offset: integer, default 0
 
+Transfer history pagination:
+
+- limit: integer, default 20, min 1, max 200
+- offset: integer, default 0, min 0
+
 ## Run Locally
 
 ### Prerequisites

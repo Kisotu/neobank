@@ -83,6 +83,25 @@ func (r *transactionRepository) ListByAccount(ctx context.Context, accountID uui
 	return transactions, nil
 }
 
+func (r *transactionRepository) ListByAccountAndType(ctx context.Context, accountID uuid.UUID, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error) {
+	rows, err := r.queries.ListTransactionsByAccountIDAndType(ctx, &db.ListTransactionsByAccountIDAndTypeParams{
+		AccountID:       toPgUUID(accountID),
+		TransactionType: string(txType),
+		Limit:           int32(limit),
+		Offset:          int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list transactions by account and type: %w", err)
+	}
+
+	transactions := make([]*domain.Transaction, 0, len(rows))
+	for _, row := range rows {
+		transactions = append(transactions, toDomainTransaction(row))
+	}
+
+	return transactions, nil
+}
+
 func (r *transactionRepository) ListByAccountInDateRange(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, limit, offset int) ([]*domain.Transaction, error) {
 	rows, err := r.queries.ListTransactionsByDateRange(ctx, &db.ListTransactionsByDateRangeParams{
 		AccountID:   toPgUUID(accountID),
@@ -93,6 +112,27 @@ func (r *transactionRepository) ListByAccountInDateRange(ctx context.Context, ac
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list transactions by date range: %w", err)
+	}
+
+	transactions := make([]*domain.Transaction, 0, len(rows))
+	for _, row := range rows {
+		transactions = append(transactions, toDomainTransaction(row))
+	}
+
+	return transactions, nil
+}
+
+func (r *transactionRepository) ListByAccountInDateRangeAndType(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error) {
+	rows, err := r.queries.ListTransactionsByDateRangeAndType(ctx, &db.ListTransactionsByDateRangeAndTypeParams{
+		AccountID:       toPgUUID(accountID),
+		CreatedAt:       pgtype.Timestamptz{Time: startDate, Valid: true},
+		CreatedAt_2:     pgtype.Timestamptz{Time: endDate, Valid: true},
+		TransactionType: string(txType),
+		Limit:           int32(limit),
+		Offset:          int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list transactions by date range and type: %w", err)
 	}
 
 	transactions := make([]*domain.Transaction, 0, len(rows))

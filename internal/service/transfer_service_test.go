@@ -133,7 +133,9 @@ type fakeTransactionRepo struct {
 	createFn              func(ctx context.Context, tx *domain.Transaction) error
 	getByIDFn             func(ctx context.Context, id uuid.UUID) (*domain.Transaction, error)
 	listByAccountFn       func(ctx context.Context, accountID uuid.UUID, limit, offset int) ([]*domain.Transaction, error)
+	listByAccountTypeFn   func(ctx context.Context, accountID uuid.UUID, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error)
 	listByDateRangeFn     func(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, limit, offset int) ([]*domain.Transaction, error)
+	listByDateRangeTypeFn func(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error)
 	createCalls           int
 	createdTransactionLog []*domain.Transaction
 }
@@ -162,7 +164,27 @@ func (f *fakeTransactionRepo) ListByAccount(ctx context.Context, accountID uuid.
 	return nil, nil
 }
 
+func (f *fakeTransactionRepo) ListByAccountAndType(ctx context.Context, accountID uuid.UUID, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error) {
+	if f.listByAccountTypeFn != nil {
+		return f.listByAccountTypeFn(ctx, accountID, txType, limit, offset)
+	}
+	if f.listByAccountFn != nil {
+		return f.listByAccountFn(ctx, accountID, limit, offset)
+	}
+	return nil, nil
+}
+
 func (f *fakeTransactionRepo) ListByAccountInDateRange(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, limit, offset int) ([]*domain.Transaction, error) {
+	if f.listByDateRangeFn != nil {
+		return f.listByDateRangeFn(ctx, accountID, startDate, endDate, limit, offset)
+	}
+	return nil, nil
+}
+
+func (f *fakeTransactionRepo) ListByAccountInDateRangeAndType(ctx context.Context, accountID uuid.UUID, startDate, endDate time.Time, txType domain.TransactionType, limit, offset int) ([]*domain.Transaction, error) {
+	if f.listByDateRangeTypeFn != nil {
+		return f.listByDateRangeTypeFn(ctx, accountID, startDate, endDate, txType, limit, offset)
+	}
 	if f.listByDateRangeFn != nil {
 		return f.listByDateRangeFn(ctx, accountID, startDate, endDate, limit, offset)
 	}

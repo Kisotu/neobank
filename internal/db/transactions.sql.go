@@ -164,6 +164,56 @@ func (q *Queries) ListTransactionsByAccountID(ctx context.Context, arg *ListTran
 	return items, nil
 }
 
+const listTransactionsByAccountIDAndType = `-- name: ListTransactionsByAccountIDAndType :many
+SELECT id, account_id, transaction_type, amount, balance_after, reference_id, description, created_at
+FROM transactions
+WHERE account_id = $1
+  AND transaction_type = $2
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListTransactionsByAccountIDAndTypeParams struct {
+	AccountID       pgtype.UUID `json:"account_id"`
+	TransactionType string      `json:"transaction_type"`
+	Limit           int32       `json:"limit"`
+	Offset          int32       `json:"offset"`
+}
+
+func (q *Queries) ListTransactionsByAccountIDAndType(ctx context.Context, arg *ListTransactionsByAccountIDAndTypeParams) ([]*Transaction, error) {
+	rows, err := q.db.Query(ctx, listTransactionsByAccountIDAndType,
+		arg.AccountID,
+		arg.TransactionType,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.TransactionType,
+			&i.Amount,
+			&i.BalanceAfter,
+			&i.ReferenceID,
+			&i.Description,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTransactionsByDateRange = `-- name: ListTransactionsByDateRange :many
 SELECT id, account_id, transaction_type, amount, balance_after, reference_id, description, created_at
 FROM transactions
@@ -187,6 +237,62 @@ func (q *Queries) ListTransactionsByDateRange(ctx context.Context, arg *ListTran
 		arg.AccountID,
 		arg.CreatedAt,
 		arg.CreatedAt_2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.TransactionType,
+			&i.Amount,
+			&i.BalanceAfter,
+			&i.ReferenceID,
+			&i.Description,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTransactionsByDateRangeAndType = `-- name: ListTransactionsByDateRangeAndType :many
+SELECT id, account_id, transaction_type, amount, balance_after, reference_id, description, created_at
+FROM transactions
+WHERE account_id = $1
+  AND created_at >= $2
+  AND created_at <= $3
+  AND transaction_type = $4
+ORDER BY created_at DESC
+LIMIT $5 OFFSET $6
+`
+
+type ListTransactionsByDateRangeAndTypeParams struct {
+	AccountID       pgtype.UUID        `json:"account_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2     pgtype.Timestamptz `json:"created_at_2"`
+	TransactionType string             `json:"transaction_type"`
+	Limit           int32              `json:"limit"`
+	Offset          int32              `json:"offset"`
+}
+
+func (q *Queries) ListTransactionsByDateRangeAndType(ctx context.Context, arg *ListTransactionsByDateRangeAndTypeParams) ([]*Transaction, error) {
+	rows, err := q.db.Query(ctx, listTransactionsByDateRangeAndType,
+		arg.AccountID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+		arg.TransactionType,
 		arg.Limit,
 		arg.Offset,
 	)

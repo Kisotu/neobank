@@ -28,7 +28,9 @@ type Querier interface {
 	ListAccountsWithLock(ctx context.Context, dollar_1 []pgtype.UUID) ([]*Account, error)
 	ListPendingTransfers(ctx context.Context, limit int32) ([]*Transfer, error)
 	ListTransactionsByAccountID(ctx context.Context, arg *ListTransactionsByAccountIDParams) ([]*Transaction, error)
+	ListTransactionsByAccountIDAndType(ctx context.Context, arg *ListTransactionsByAccountIDAndTypeParams) ([]*Transaction, error)
 	ListTransactionsByDateRange(ctx context.Context, arg *ListTransactionsByDateRangeParams) ([]*Transaction, error)
+	ListTransactionsByDateRangeAndType(ctx context.Context, arg *ListTransactionsByDateRangeAndTypeParams) ([]*Transaction, error)
 	ListTransfersByAccount(ctx context.Context, arg *ListTransfersByAccountParams) ([]*Transfer, error)
 	ListUsers(ctx context.Context, arg *ListUsersParams) ([]*User, error)
 	UpdateAccountBalance(ctx context.Context, arg *UpdateAccountBalanceParams) error

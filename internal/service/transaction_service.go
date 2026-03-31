@@ -75,6 +75,12 @@ func (s *transactionService) ListByAccount(ctx context.Context, userID, accountI
 		offset = 0
 	}
 
+	txType = strings.ToLower(txType)
+	if txType != "" && !domain.TransactionType(txType).IsValid() {
+		return nil, domain.ErrInvalidTransactionType
+	}
+	txTypeFilter := domain.TransactionType(txType)
+
 	var transactions []*domain.Transaction
 	if startDate != nil || endDate != nil {
 		from := time.Unix(0, 0).UTC()
@@ -88,24 +94,24 @@ func (s *transactionService) ListByAccount(ctx context.Context, userID, accountI
 		if from.After(to) {
 			return nil, domain.ErrInvalidTransfer
 		}
-		transactions, err = s.transactionRepo.ListByAccountInDateRange(ctx, accountID, from, to, limit, offset)
+		if txType != "" {
+			transactions, err = s.transactionRepo.ListByAccountInDateRangeAndType(ctx, accountID, from, to, txTypeFilter, limit, offset)
+		} else {
+			transactions, err = s.transactionRepo.ListByAccountInDateRange(ctx, accountID, from, to, limit, offset)
+		}
 	} else {
-		transactions, err = s.transactionRepo.ListByAccount(ctx, accountID, limit, offset)
+		if txType != "" {
+			transactions, err = s.transactionRepo.ListByAccountAndType(ctx, accountID, txTypeFilter, limit, offset)
+		} else {
+			transactions, err = s.transactionRepo.ListByAccount(ctx, accountID, limit, offset)
+		}
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	txType = strings.ToLower(txType)
-	if txType != "" && !domain.TransactionType(txType).IsValid() {
-		return nil, domain.ErrInvalidTransactionType
-	}
-
 	items := make([]*TransactionResponse, 0, len(transactions))
 	for _, tx := range transactions {
-		if txType != "" && strings.ToLower(string(tx.TransactionType)) != txType {
-			continue
-		}
 		items = append(items, mapTransactionResponse(tx))
 	}
 

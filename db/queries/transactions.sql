@@ -28,6 +28,14 @@ WHERE account_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
 
+-- name: ListTransactionsByAccountIDAndType :many
+SELECT *
+FROM transactions
+WHERE account_id = $1
+  AND transaction_type = $2
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
+
 -- name: GetTransactionsByReferenceID :many
 SELECT *
 FROM transactions
@@ -42,3 +50,13 @@ WHERE account_id = $1
   AND created_at <= $3
 ORDER BY created_at DESC
 LIMIT $4 OFFSET $5;
+
+-- name: ListTransactionsByDateRangeAndType :many
+SELECT *
+FROM transactions
+WHERE account_id = $1
+  AND created_at >= $2
+  AND created_at <= $3
+  AND transaction_type = $4
+ORDER BY created_at DESC
+LIMIT $5 OFFSET $6;

@@ -109,6 +109,13 @@ Public routes:
 | POST | /api/v1/auth/refresh | Rotate token pair |
 | POST | /api/v1/auth/logout | Stateless logout |
 
+Logout semantics:
+
+- Logout is stateless and always returns 204.
+- The client must discard access and refresh tokens after logout.
+- The server does not keep a token revocation store in this version.
+- A refresh token issued before logout remains valid until expiry.
+
 Protected routes (Authorization: Bearer ACCESS_TOKEN):
 
 | Method | Path | Purpose |

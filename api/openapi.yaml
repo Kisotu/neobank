@@ -21,6 +21,48 @@ paths:
               schema:
                 type: string
                 example: ok
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh token pair
+      operationId: refreshAuthToken
+      description: Rotates access and refresh tokens when a valid refresh token is provided.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token pair refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/auth/logout:
+    post:
+      summary: Stateless logout
+      operationId: logout
+      description: |
+        Stateless logout endpoint. Clients should discard tokens locally.
+        Tokens previously issued remain valid until expiration because there is no revocation store.
+      security: []
+      responses:
+        "204":
+          description: Logout acknowledged
   /api/v1/accounts/{id}/transfers:
     get:
       summary: List transfers by account
@@ -136,3 +178,24 @@ components:
           type: string
           format: date-time
           nullable: true
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+    AuthResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - expires_in
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64

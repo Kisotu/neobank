@@ -114,6 +114,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, _ *http.Request) {
+	// Logout is intentionally stateless: clients discard tokens locally.
 	w.WriteHeader(http.StatusNoContent)
 }
 
